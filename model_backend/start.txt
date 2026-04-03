@@ -1,0 +1,3 @@
+//TO_RUN
+-------pip install -r requirements.txt------ one time
+uvicorn app:app --reload --port 8000

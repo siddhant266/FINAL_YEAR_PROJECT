@@ -1,0 +1,76 @@
+
+
+# 📌 Basic Customer Complaints (One Line Each)
+
+## 🖥 IT Related Complaints
+
+1. Unable to log in to the mobile app.
+2. OTP not received on mobile or email.
+3. Latest bill not visible on website.
+4. Latest bill not updated in mobile app.
+5. Outstanding amount on website is different from bill amount.
+6. Payment receipt not generated after payment.
+7. Bill paid but still showing outstanding amount.
+8. Rectified bill not updated in app.
+9. Wrong meter reading entered in app and no option to edit.
+10. Complaint type option is locked or not working.
+
+---
+
+## 🔧 O&M (Operations & Maintenance) Complaints
+
+1. Meter is not running.
+2. Meter is running fast.
+3. No gas supply in house.
+4. No gas supply in society.
+5. Gas smell in kitchen.
+6. Gas leakage in society.
+7. Gas smell on roadside.
+8. Burner flame is too high or too low.
+9. Temporary disconnection request.
+10. Permanent disconnection request.
+11. Reconnection request after temporary disconnection.
+12. Reconnection against recovery.
+13. Modification or shifting of gas pipeline in kitchen.
+14. Wrong meter number mismatch.
+15. Meter disconnected but not updated in system.
+16. Faulty meter replaced but not updated in system.
+17. Wrong reconnection date updated in system.
+18. Meter missing at customer site.
+19. Meter misplaced by customer.
+
+---
+
+## 🚗 CNG Related Complaints
+
+1. Long queue at CNG station.
+2. Irregular supply of CNG at station.
+3. Out-of-turn filling at station.
+4. Change not returned at CNG station.
+5. Low pressure during CNG filling.
+6. Debit or credit card not accepted at station.
+7. Inquiry about new CNG station.
+8. Complaint about CNG price hike.
+9. Misbehavior at CNG station.
+10. Request for separate queue for ladies.
+
+---
+
+## 🏢 CRM / Service Related Complaints
+
+1. Wrong commitment given by staff.
+2. Customer details not updated in system.
+3. Registration details not reflecting in system.
+4. Payment done but status showing incomplete.
+5. Customer created twice in system.
+6. Customer converted without registration.
+7. Feasibility survey request for PNG.
+8. Refund request.
+9. Name transfer request.
+10. Name or address correction request.
+11. LPG disconnected but PNG not started.
+12. Credit note request for gas leakage.
+13. DMA not answering customer calls.
+14. Misbehavior by staff.
+15. Sales lead for industrial or commercial customer.
+
