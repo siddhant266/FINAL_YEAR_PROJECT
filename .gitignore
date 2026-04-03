@@ -1,5 +1,4 @@
 chatbot_backend/.env
-Frontend/.env
 model_backend/model/label_encoder.pkl
 model_backend/model/mngl_complaint_classifier.pth
 model_backend/model/tokenizer/special_tokens_map.json
