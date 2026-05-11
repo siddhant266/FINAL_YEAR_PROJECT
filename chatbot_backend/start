@@ -1,4 +1,4 @@
-cd AI_CHATBOT/chatbot_backend
+cd chatbot_backend
 python -m venv venv
 .\venv\Scripts\activate
 

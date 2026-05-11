@@ -1,3 +1,3 @@
-cd AI_CHATBOT/Frontend
+cd Frontend
 ------------ npm install ----------(one time) 
 npm run dev

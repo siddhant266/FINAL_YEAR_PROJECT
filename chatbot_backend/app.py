@@ -1,92 +1,159 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from dotenv import load_dotenv
 import os
+import csv
 import uuid
 
-load_dotenv()   # reads .env file if present
+from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
-from gemini_client import ask_gemini
-from faq_loader import load_faq
+from langchain_mistralai import ChatMistralAI, MistralAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_community.document_loaders import CSVLoader
+from langchain_community.tools import DuckDuckGoSearchRun
+from langchain_core.tools import tool
+from langgraph.prebuilt import create_react_agent
 
-app = Flask(__name__)
-CORS(app)       # allow all origins; restrict in production (see README)
+load_dotenv()
 
-# ── In-memory session store ───────────────────────────────────────────────────
-# Keeps conversation history per session so multi-turn context works
-# even though the frontend only sends one message at a time.
-# Format: { session_id: [ {role, content}, ... ] }
-sessions: dict[str, list[dict]] = {}
+CSV_FILENAME = os.path.join(os.path.dirname(__file__), "mngl_faq.csv")
 
+# ---------------------------------------------------------------------------
+# Global singletons – initialised once at startup
+# ---------------------------------------------------------------------------
+_retriever = None
+_agent = None
 
-# ── Health check ─────────────────────────────────────────────────────────────
-@app.get("/health")
-def health():
-    return jsonify({"status": "ok", "service": "MNGL Chatbot Backend (Python)"})
-
-
-# ── /ask  ←  matches your frontend exactly ───────────────────────────────────
-@app.post("/ask")
-def ask():
-    """
-    Matches the frontend contract:
-        Request  → { "question": "...", "sessionId": "..." (optional) }
-        Response → { "answer": "...",  "sessionId": "..." }
-
-    sessionId is auto-generated on first message and must be stored by
-    the frontend and echoed back on every subsequent message so the
-    backend can maintain multi-turn conversation history.
-    """
-    body = request.get_json(silent=True)
-
-    # ── Validation ────────────────────────────────────────────────────────────
-    if not body or not body.get("question", "").strip():
-        return jsonify({"error": "Request body must contain a non-empty 'question'."}), 400
-
-    question   = body["question"].strip()
-    session_id = body.get("sessionId") or str(uuid.uuid4())
-
-    # ── Build / retrieve conversation history ─────────────────────────────────
-    history = sessions.setdefault(session_id, [])
-    history.append({"role": "user", "content": question})
-
-    # ── Call Gemini ───────────────────────────────────────────────────────────
-    try:
-        answer = ask_gemini(history)
-        history.append({"role": "assistant", "content": answer})
-
-        # Keep history bounded to last 20 turns to avoid token bloat
-        if len(history) > 40:
-            sessions[session_id] = history[-40:]
-
-        return jsonify({"answer": answer, "sessionId": session_id})
-
-    except Exception as e:
-        # Roll back the user message so history stays consistent
-        history.pop()
-        app.logger.error("Gemini error: %s", e)
-        return jsonify({
-            "error":   "Something went wrong. Please try again.",
-            "details": str(e) if os.getenv("FLASK_ENV") == "development" else None,
-        }), 500
+# In-memory conversation history: { sessionId: [langchain message tuples] }
+_sessions: dict[str, list] = {}
 
 
-# ── /session/<id>  – clear a session (optional utility) ──────────────────────
-@app.delete("/session/<session_id>")
-def clear_session(session_id):
-    sessions.pop(session_id, None)
-    return jsonify({"cleared": session_id})
+# ---------------------------------------------------------------------------
+# LangChain tools
+# ---------------------------------------------------------------------------
+
+@tool
+def mngl_faq_search(query: str) -> str:
+    """Search for MNGL info including PNG Basics, Billing, Payments, Installation, and CNG Safety."""
+    global _retriever
+    docs = _retriever.invoke(query)
+    return "\n\n".join([d.page_content for d in docs]) if docs else "No results found."
 
 
-# ── FAQ list endpoint (for frontend suggested questions) ──────────────────────
-@app.get("/api/chat/faq")
-def faq():
-    return jsonify({"faqs": load_faq()})
+@tool
+def web_search(query: str) -> str:
+    """Useful for general knowledge outside MNGL internal data, e.g. crude oil prices or competitor info."""
+    return DuckDuckGoSearchRun().run(query)
 
 
-# ── Run ───────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# FastAPI app
+# ---------------------------------------------------------------------------
+
+app = FastAPI(title="MNGL Chatbot API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],          # tighten in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class AskRequest(BaseModel):
+    question: str
+    sessionId: str | None = None   # client echoes back the id it received
+
+
+class AskResponse(BaseModel):
+    answer: str
+    sessionId: str
+
+
+# ---------------------------------------------------------------------------
+# Startup – build embeddings & agent once
+# ---------------------------------------------------------------------------
+
+@app.on_event("startup")
+async def startup():
+    global _retriever, _agent
+
+    print("--- STARTING MNGL AI ASSISTANT ---")
+
+    if not os.getenv("MISTRAL_API_KEY"):
+        raise RuntimeError(
+            "❌ MISTRAL_API_KEY not found. "
+            "Make sure you have a '.env' file with MISTRAL_API_KEY=your_key inside chatbot_backend/."
+        )
+
+    # Create dummy CSV if missing
+    if not os.path.exists(CSV_FILENAME):
+        print(f"Warning: {CSV_FILENAME} not found. Creating dummy data.")
+        data = [
+            ["id", "category", "question", "answer"],
+            ["1", "PNG Basics", "What is Piped Natural Gas (PNG)?", "PNG is mainly methane (CH4) with a small percentage of other hydrocarbons."],
+            ["6", "Billing", "What is the billing cycle?", "The billing cycle is bi-monthly (once every two months)."],
+            ["8", "Payments", "What are the various bill payment modes?", "Cheque drop box, ECS, Axis/ICICI bank, or card payments at MNGL walk-in centres."],
+            ["22", "CNG Safety", "What is the pressure in a CNG cylinder?", "Max up to 200 bar; cylinders meet standards and are CCOE approved."],
+        ]
+        with open(CSV_FILENAME, "w", newline="", encoding="utf-8-sig") as f:
+            csv.writer(f).writerows(data)
+
+    # Embeddings & Vector Store
+    print("[*] Loading Mistral Embeddings...")
+    embedding_model = MistralAIEmbeddings(model="mistral-embed")
+
+    print(f"[*] Loading data from {CSV_FILENAME}...")
+    loader = CSVLoader(
+        file_path=CSV_FILENAME,
+        encoding="utf-8",
+        csv_args={"delimiter": ",", "quotechar": '"'},
+    )
+    documents = loader.load()
+
+    vector_store = FAISS.from_documents(documents, embedding_model)
+    _retriever = vector_store.as_retriever()
+
+    # LLM & Agent
+    print("[*] Initializing Mistral Brain...")
+    llm = ChatMistralAI(model="open-mistral-7b", temperature=0)
+    _agent = create_react_agent(llm, [mngl_faq_search, web_search])
+
+    print("[OK] SYSTEM READY - listening on http://127.0.0.1:8001")
+
+
+# ---------------------------------------------------------------------------
+# Endpoint
+# ---------------------------------------------------------------------------
+
+@app.post("/ask", response_model=AskResponse)
+async def ask(body: AskRequest):
+    """Receive a question and return the agent's answer."""
+    # Resolve or create a session
+    session_id = body.sessionId or str(uuid.uuid4())
+    history = _sessions.setdefault(session_id, [])
+
+    # Append the new human turn
+    history.append(("human", body.question))
+
+    # Run the agent with the full history so it has context
+    result = _agent.invoke({"messages": history})
+
+    # Extract the last AI message
+    last_message = result["messages"][-1]
+    answer_text = last_message.content
+
+    # Persist the AI reply to history
+    history.append(("ai", answer_text))
+
+    return AskResponse(answer=answer_text, sessionId=session_id)
+
+
+# ---------------------------------------------------------------------------
+# Dev entry-point  (python app.py)
+# ---------------------------------------------------------------------------
+
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8001))
-    debug = os.getenv("FLASK_ENV") == "development"
-    print(f"✅  MNGL chatbot backend running on http://localhost:{port}")
-    app.run(host="0.0.0.0", port=port, debug=debug)
+    import uvicorn
+    uvicorn.run("app:app", host="127.0.0.1", port=8001, reload=True)

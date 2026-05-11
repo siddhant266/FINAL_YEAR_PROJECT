@@ -1,3 +1,6 @@
 //TO_RUN
+python -m venv venv
+.\venv\Scripts\activate
 -------pip install -r requirements.txt------ one time
+
 uvicorn app:app --reload --port 8000

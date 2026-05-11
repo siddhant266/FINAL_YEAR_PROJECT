@@ -15,7 +15,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { motion, AnimatePresence } from "framer-motion";
 import mascotImage from "@assets/generated_images/gas_utility_worker_mascot.png";
 
-const BACKEND_URL = "http://127.0.0.1:8001/ask";
+const BACKEND_URL = "/api/ask"; // proxied by Vite → http://127.0.0.1:8001/ask
 
 const SUGGESTED_ACTIONS = [
   "Pay Bill Online",
