@@ -24,6 +24,25 @@ CSV_FILENAME = os.path.join(os.path.dirname(__file__), "mngl_faq.csv")
 # ---------------------------------------------------------------------------
 _retriever = None
 _agent = None
+_faq_rows: list[dict[str, str]] = []
+_SEARCH_STOPWORDS = {
+    "about",
+    "are",
+    "can",
+    "does",
+    "for",
+    "from",
+    "how",
+    "the",
+    "this",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "why",
+    "with",
+}
 
 SYSTEM_PROMPT = """
 You are the MNGL virtual assistant. Answer like a helpful customer-care agent.
@@ -57,6 +76,47 @@ def clean_answer_text(text: str) -> str:
     return text.strip()
 
 
+def load_faq_rows() -> list[dict[str, str]]:
+    """Load FAQ rows for local search and startup fallback."""
+    with open(CSV_FILENAME, newline="", encoding="utf-8-sig") as f:
+        return list(csv.DictReader(f))
+
+
+def search_faq_locally(query: str, limit: int = 3) -> str:
+    """Tiny keyword search used when remote embeddings are unavailable."""
+    query_terms = {
+        term
+        for term in re.findall(r"[a-z0-9]+", query.lower())
+        if len(term) > 2 and term not in _SEARCH_STOPWORDS
+    }
+    if not query_terms:
+        return "Please ask a question about PNG, billing, payments, installation, or CNG safety."
+
+    scored_rows = []
+    for row in _faq_rows:
+        searchable_text = " ".join(
+            str(row.get(field, "")) for field in ("category", "question", "answer")
+        ).lower()
+        score = sum(1 for term in query_terms if term in searchable_text)
+        if score:
+            scored_rows.append((score, row))
+
+    if not scored_rows:
+        return "I could not find that in the local MNGL FAQ. MNGL customer care can confirm the latest process."
+
+    scored_rows.sort(key=lambda item: item[0], reverse=True)
+    answers = []
+    for _, row in scored_rows[:limit]:
+        question = row.get("question", "").strip()
+        answer = row.get("answer", "").strip()
+        if question and answer:
+            answers.append(f"{question}\n{answer}")
+        elif answer:
+            answers.append(answer)
+
+    return "\n\n".join(answers) if answers else "No results found."
+
+
 # ---------------------------------------------------------------------------
 # LangChain tools
 # ---------------------------------------------------------------------------
@@ -65,8 +125,11 @@ def clean_answer_text(text: str) -> str:
 def mngl_faq_search(query: str) -> str:
     """Search for MNGL info including PNG Basics, Billing, Payments, Installation, and CNG Safety."""
     global _retriever
+    if _retriever is None:
+        return search_faq_locally(query)
+
     docs = _retriever.invoke(query)
-    return "\n\n".join([d.page_content for d in docs]) if docs else "No results found."
+    return "\n\n".join([d.page_content for d in docs]) if docs else search_faq_locally(query)
 
 
 @tool
@@ -106,7 +169,7 @@ class AskResponse(BaseModel):
 
 @app.on_event("startup")
 async def startup():
-    global _retriever, _agent
+    global _retriever, _agent, _faq_rows
 
     print("--- STARTING MNGL AI ASSISTANT ---")
 
@@ -129,11 +192,8 @@ async def startup():
         with open(CSV_FILENAME, "w", newline="", encoding="utf-8-sig") as f:
             csv.writer(f).writerows(data)
 
-    # Embeddings & Vector Store
-    print("[*] Loading Mistral Embeddings...")
-    embedding_model = MistralAIEmbeddings(model="mistral-embed")
-
     print(f"[*] Loading data from {CSV_FILENAME}...")
+    _faq_rows = load_faq_rows()
     loader = CSVLoader(
         file_path=CSV_FILENAME,
         encoding="utf-8",
@@ -141,15 +201,23 @@ async def startup():
     )
     documents = loader.load()
 
-    vector_store = FAISS.from_documents(documents, embedding_model)
-    _retriever = vector_store.as_retriever()
+    try:
+        # Embeddings & Vector Store
+        print("[*] Loading Mistral Embeddings...")
+        embedding_model = MistralAIEmbeddings(model="mistral-embed")
+        vector_store = FAISS.from_documents(documents, embedding_model)
+        _retriever = vector_store.as_retriever()
 
-    # LLM & Agent
-    print("[*] Initializing Mistral Brain...")
-    llm = ChatMistralAI(model="open-mistral-7b", temperature=0)
-    _agent = create_react_agent(llm, [mngl_faq_search, web_search], prompt=SYSTEM_PROMPT)
+        # LLM & Agent
+        print("[*] Initializing Mistral Brain...")
+        llm = ChatMistralAI(model="open-mistral-7b", temperature=0)
+        _agent = create_react_agent(llm, [mngl_faq_search, web_search], prompt=SYSTEM_PROMPT)
+    except Exception as exc:
+        _retriever = None
+        _agent = None
+        print(f"[!] Mistral is unavailable, using local FAQ fallback: {exc}")
 
-    print("[OK] SYSTEM READY - listening on http://127.0.0.1:8001")
+    print("[OK] SYSTEM READY")
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +233,11 @@ async def ask(body: AskRequest):
 
     # Append the new human turn
     history.append(("human", body.question))
+
+    if _agent is None:
+        answer_text = clean_answer_text(search_faq_locally(body.question, limit=1))
+        history.append(("ai", answer_text))
+        return AskResponse(answer=answer_text, sessionId=session_id)
 
     # Run the agent with the full history so it has context
     result = _agent.invoke({"messages": history})
