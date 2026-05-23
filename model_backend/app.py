@@ -8,7 +8,10 @@ app = FastAPI(title="Complaint Classification API")
 # 👇 ADD THIS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # React URL
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],  # React dev URLs
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

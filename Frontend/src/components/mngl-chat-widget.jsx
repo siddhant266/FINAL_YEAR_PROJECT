@@ -15,6 +15,8 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { motion, AnimatePresence } from "framer-motion";
 import mascotImage from "@assets/generated_images/gas_utility_worker_mascot.png";
 
+const MotionDiv = motion.div;
+const MotionButton = motion.button;
 const BACKEND_URL = "/api/ask"; // proxied by Vite → http://127.0.0.1:8001/ask
 
 const SUGGESTED_ACTIONS = [
@@ -105,7 +107,7 @@ export function MNGLChatWidget() {
       };
 
       setMessages((prev) => [...prev, botMessage]);
-    } catch (error) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         {
@@ -124,7 +126,7 @@ export function MNGLChatWidget() {
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end pointer-events-none">
       <AnimatePresence>
         {isOpen && (
-          <motion.div
+          <MotionDiv
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
@@ -195,7 +197,7 @@ export function MNGLChatWidget() {
                           className={`p-3 rounded-2xl text-sm shadow-sm ${
                             msg.sender === "user"
                               ? "bg-primary text-white rounded-tr-none"
-                              : "bg-white text-gray-800 rounded-tl-none"
+                              : "bg-white text-gray-800 rounded-tl-none whitespace-pre-line leading-relaxed"
                           }`}
                         >
                           {msg.text}
@@ -270,19 +272,19 @@ export function MNGLChatWidget() {
                 </form>
               </div>
             </div>
-          </motion.div>
+          </MotionDiv>
         )}
       </AnimatePresence>
 
       {/* Floating Button */}
-      <motion.button
+      <MotionButton
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setIsOpen(!isOpen)}
         className="pointer-events-auto h-16 w-16 rounded-full bg-primary text-white shadow-xl flex items-center justify-center relative"
       >
         {isOpen ? <X size={28} /> : <MessageCircle size={28} />}
-      </motion.button>
+      </MotionButton>
     </div>
   );
 }

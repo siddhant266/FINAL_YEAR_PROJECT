@@ -1,3 +1,9 @@
+venv/
+**/venv/
+__pycache__/
+*.pyc
+.codex-run-logs/
+
 chatbot_backend/.env
 model_backend/model/label_encoder.pkl
 model_backend/model/mngl_complaint_classifier.pth

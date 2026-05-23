@@ -1,5 +1,6 @@
 import os
 import csv
+import re
 import uuid
 
 from dotenv import load_dotenv
@@ -24,8 +25,36 @@ CSV_FILENAME = os.path.join(os.path.dirname(__file__), "mngl_faq.csv")
 _retriever = None
 _agent = None
 
+SYSTEM_PROMPT = """
+You are the MNGL virtual assistant. Answer like a helpful customer-care agent.
+
+Formatting rules:
+- Start with a short direct answer, not a long introduction.
+- Use clear section titles only when useful.
+- Prefer short bullet points with one idea per line.
+- Keep answers concise: usually 5 to 8 lines, unless the user asks for detail.
+- Do not use markdown tables, bold markers, headings with ###, or decorative markdown.
+- Use plain labels like "Eligibility:" instead of "**Eligibility**:".
+- Do not add decorative separators.
+- For step-by-step process questions, use:
+  Quick Answer
+  What You Need
+  Steps
+  Important Note
+- Use MNGL FAQ facts when available. If something is not in the FAQ, say that
+  MNGL customer care can confirm the latest process.
+""".strip()
+
 # In-memory conversation history: { sessionId: [langchain message tuples] }
 _sessions: dict[str, list] = {}
+
+
+def clean_answer_text(text: str) -> str:
+    """Remove markdown noise so chat replies render cleanly as plain text."""
+    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+    text = re.sub(r"^#{1,6}\s*", "", text, flags=re.MULTILINE)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +147,7 @@ async def startup():
     # LLM & Agent
     print("[*] Initializing Mistral Brain...")
     llm = ChatMistralAI(model="open-mistral-7b", temperature=0)
-    _agent = create_react_agent(llm, [mngl_faq_search, web_search])
+    _agent = create_react_agent(llm, [mngl_faq_search, web_search], prompt=SYSTEM_PROMPT)
 
     print("[OK] SYSTEM READY - listening on http://127.0.0.1:8001")
 
@@ -142,7 +171,7 @@ async def ask(body: AskRequest):
 
     # Extract the last AI message
     last_message = result["messages"][-1]
-    answer_text = last_message.content
+    answer_text = clean_answer_text(last_message.content)
 
     # Persist the AI reply to history
     history.append(("ai", answer_text))

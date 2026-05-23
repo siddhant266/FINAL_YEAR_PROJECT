@@ -24,7 +24,7 @@ function ComplaintClassification() {
       setResult(res.department);
       setHistory((prev) => [record, ...prev]);
       setText("");
-    } catch (err) {
+    } catch {
       alert("Error calling ML API");
     } finally {
       setLoading(false);
