@@ -10,3 +10,5 @@ model_backend/model/mngl_complaint_classifier.pth
 model_backend/model/tokenizer/special_tokens_map.json
 model_backend/model/tokenizer/tokenizer_config.json
 model_backend/model/tokenizer/vocab.txt
+
+deployement_files - to run the ccm model/
