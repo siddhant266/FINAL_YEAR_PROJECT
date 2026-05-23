@@ -1,0 +1,62 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Model Backend",
+            "type": "shell",
+            "command": ".\\venv\\Scripts\\activate; uvicorn app:app --host 127.0.0.1 --port 8000 --reload",
+            "options": {
+                "cwd": "${workspaceFolder}/model_backend"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "group": "mngl",
+                "showReuseMessage": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Chatbot Backend",
+            "type": "shell",
+            "command": ".\\venv\\Scripts\\activate; uvicorn app:app --host 127.0.0.1 --port 8001 --reload",
+            "options": {
+                "cwd": "${workspaceFolder}/chatbot_backend"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "group": "mngl",
+                "showReuseMessage": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Frontend",
+            "type": "shell",
+            "command": "npm run dev",
+            "options": {
+                "cwd": "${workspaceFolder}/Frontend"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "group": "mngl",
+                "showReuseMessage": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🚀 Start All MNGL Services",
+            "dependsOn": ["Model Backend", "Chatbot Backend", "Frontend"],
+            "dependsOrder": "parallel",
+            "presentation": {
+                "reveal": "silent"
+            },
+            "runOptions": {
+                "runOn": "folderOpen"
+            },
+            "problemMatcher": []
+        }
+    ]
+}
